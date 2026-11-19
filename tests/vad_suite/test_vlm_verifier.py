@@ -178,9 +178,10 @@ def test_prompt_file_without_verifier_block(tmp_path: Path):
 
 
 def test_quantization_is_validated():
-    """Tham số lạ ('8bit') phải raise ngay, không âm thầm rơi xuống nhánh fp16."""
+    """'8bit' là lựa chọn thật. Giá trị lạ ('2bit') vẫn raise, không rơi xuống nhánh fp16."""
+    VLMVerifier(runner=lambda *_: GOOD_JSON, quantization="8bit")
     with pytest.raises(ValueError, match="quantization"):
-        VLMVerifier(runner=lambda *_: GOOD_JSON, quantization="8bit")
+        VLMVerifier(runner=lambda *_: GOOD_JSON, quantization="2bit")
 
 
 # ---------- đường _load_model (monkeypatch transformers: KHÔNG tải weight, KHÔNG cần GPU) ----------
@@ -241,6 +242,35 @@ def test_load_model_honours_explicit_device(monkeypatch):
     v = VLMVerifier(device="cuda:1", quantization="none")
     v._load_model()
     assert captured["kwargs"]["device_map"] == "cuda:1"
+
+
+def test_load_model_8bit_builds_8bit_config(monkeypatch):
+    """'8bit' -> BitsAndBytesConfig load_in_8bit, đúng class Qwen3-VL, không đụng nhánh 4-bit."""
+    import transformers
+
+    captured, _ = _patch_family(monkeypatch, "Qwen3VLForConditionalGeneration", device_available=True)
+    v = VLMVerifier(model_id="Qwen/Qwen3-VL-8B-Instruct", quantization="8bit")
+    v._load_model()
+    cfg = captured["kwargs"]["quantization_config"]
+    assert isinstance(cfg, transformers.BitsAndBytesConfig)
+    assert cfg.load_in_8bit is True
+    assert cfg.load_in_4bit is False
+    assert captured["model_cls"] == "Qwen3VLForConditionalGeneration"
+
+
+def test_load_model_8bit_without_cuda_fails_before_processor_download(monkeypatch):
+    """8-bit không có CUDA -> RuntimeError trước khi tải processor, giống 4-bit."""
+    import transformers
+    import torch as _torch
+
+    def _boom(mid):
+        raise AssertionError("processor không được tải khi đã biết 8-bit sẽ fail")
+
+    monkeypatch.setattr(transformers.AutoProcessor, "from_pretrained", _boom)
+    monkeypatch.setattr(_torch.cuda, "is_available", lambda: False)
+    v = VLMVerifier(model_id="Qwen/Qwen3-VL-8B-Instruct", quantization="8bit")
+    with pytest.raises(RuntimeError, match="8bit"):
+        v._load_model()
 
 
 def test_load_model_4bit_without_cuda_fails_before_processor_download(monkeypatch):

@@ -108,8 +108,9 @@ class VLMVerifier:
       model_id     HF id (mặc định = model đã đo ở A1; T4 dùng cùng model, code không đổi).
       device       'cuda' | 'cuda:1' | 'cpu' (None = tự chọn cuda nếu có). Nối thẳng vào
                    `device_map` của from_pretrained — không còn ignore như bản cũ.
-      quantization '4bit' (nf4, cần CUDA; không có -> RuntimeError TRƯỚC khi tải processor)
-                   hoặc 'none' (fp16 trên CUDA, fp32 trên CPU).
+       quantization '4bit' (nf4, cần CUDA), '8bit' (load_in_8bit, cần CUDA; cả hai
+                   không có CUDA -> RuntimeError TRƯỚC khi tải processor), hoặc 'none'
+                   (fp16 trên CUDA, fp32 trên CPU).
       runner       tiêm callable (system, user, frames) -> text. None = lazy-load model thật
                    (yêu cầu requirements-vlm.txt + GPU; test KHÔNG đi đường này).
       max_attempts số lần thử parse (mặc định 2 = 1 retry theo spec A2). Lỗi parse ở lần i
@@ -132,8 +133,10 @@ class VLMVerifier:
     ):
         if max_attempts < 1:
             raise ValueError(f"max_attempts phải >= 1, nhận {max_attempts}")
-        if quantization not in ("4bit", "none"):
-            raise ValueError(f"quantization không hỗ trợ: {quantization!r} (chỉ '4bit' | 'none')")
+        if quantization not in ("4bit", "8bit", "none"):
+            raise ValueError(
+                f"quantization không hỗ trợ: {quantization!r} (chỉ '4bit' | '8bit' | 'none')"
+            )
         self.model_id = model_id
         self.device = device
         self.quantization = quantization
@@ -174,7 +177,7 @@ class VLMVerifier:
         return self._processor.batch_decode([gen], skip_special_tokens=True)[0]
 
     def _load_model(self) -> None:
-        """Nạp VLM lazy, cache lại. quantization='4bit' -> nf4; 'none' -> fp16/fp32.
+        """Nạp VLM lazy, cache lại. '4bit' -> nf4; '8bit' -> load_in_8bit; 'none' -> fp16/fp32.
 
         `self.device` (ví dụ 'cuda', 'cuda:1', 'cpu') được nối thẳng vào `device_map`;
         mặc định tự chọn cuda nếu có. Check CUDA/`device` TRƯỚC khi tải processor
@@ -184,17 +187,18 @@ class VLMVerifier:
         import transformers
 
         target = self.device or ("cuda" if torch.cuda.is_available() else "cpu")
-        if self.quantization == "4bit" and not target.startswith("cuda"):
+        if self.quantization in ("4bit", "8bit") and not target.startswith("cuda"):
             raise RuntimeError(
-                f"quantization='4bit' cần CUDA (device hiện tại: {target!r}); "
+                f"quantization={self.quantization!r} cần CUDA (device hiện tại: {target!r}); "
                 "truyền quantization='none' để chạy fp16/fp32 "
-                "(VLMVerifier không tự chạy 4-bit trên CPU)"
+                "(VLMVerifier không tự chạy 4-bit/8-bit trên CPU)"
             )
 
         # Class theo gia đình model — Auto* không luôn map đúng VLM (xem scripts/bench_vlm.py).
         by_family = {
             "qwen2-vl": transformers.Qwen2VLForConditionalGeneration,
             "qwen2.5-vl": transformers.Qwen2_5_VLForConditionalGeneration,
+            "qwen3-vl": transformers.Qwen3VLForConditionalGeneration,
             "smolvlm": transformers.SmolVLMForConditionalGeneration,
         }
         cls = next(
@@ -207,13 +211,19 @@ class VLMVerifier:
         if self._model is not None:
             return
         if self.quantization == "4bit":
+            quant_config = transformers.BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_quant_type="nf4",
+            )
+        elif self.quantization == "8bit":
+            quant_config = transformers.BitsAndBytesConfig(load_in_8bit=True)
+        else:
+            quant_config = None
+        if quant_config is not None:
             self._model = cls.from_pretrained(
                 self.model_id,
-                quantization_config=transformers.BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_compute_dtype=torch.float16,
-                    bnb_4bit_quant_type="nf4",
-                ),
+                quantization_config=quant_config,
                 device_map=target,
                 torch_dtype=torch.float16,
                 attn_implementation="sdpa",
