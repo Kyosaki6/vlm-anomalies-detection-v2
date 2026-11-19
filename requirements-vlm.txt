@@ -1,7 +1,9 @@
-# Phụ thuộc riêng cho tier-2 VLM (A1/A2, Phước).
+# Phụ thuộc cho tier-2 VLM và cho vòng train LoRA (fork Qwen3-VL).
 # KHÔNG đưa vào requirements-dev.txt: CI không tải model hay cần GPU.
-# Cài tay khi chạy bench/verify thật:  pip install -r requirements-vlm.txt
+# Cài tay khi chạy bench/verify/train thật:  pip install -r requirements-vlm.txt
 bitsandbytes>=0.43.0
 accelerate>=0.30.0
-transformers>=4.49.0   # cùng floor với requirements.txt; script dùng class Qwen2VL/Qwen2_5_VL/SmolVLM
+transformers>=4.57.0   # Qwen3-VL cần >=4.57; Qwen2.5-VL vẫn nạp được ở mức này
+peft>=0.13.0           # LoRA trên base 8-bit đóng băng
+trl>=0.12.0            # vòng train (scripts/train_lora.py, Phase 2)
 num2words>=0.5.13      # SmolVLM processor yêu cầu
