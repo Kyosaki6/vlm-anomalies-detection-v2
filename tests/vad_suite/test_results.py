@@ -180,6 +180,28 @@ def test_default_results_dir_points_into_repo():
     assert DEFAULT_RESULTS_DIR.name == "results"
 
 
+def test_trained_metadata_round_trips_at_schema_version_1(tmp_path):
+    """H3: metadata.trained sống sót ghi/đọc, và schema_version vẫn là 1 chứ không bị đẩy lên 2."""
+    meta = make_metadata(model="Qwen/Qwen3-VL-8B-Instruct", commit="abc", trained=True,
+                         adapter_id="lora-r16", base_model="Qwen/Qwen3-VL-8B-Instruct",
+                         quantization="8bit", raft_hits=["Abuse001_x264"])
+    r = a_result(metadata=meta)
+    back = RunResult.from_json(r.to_json(tmp_path / "v1.json"))
+    assert back.schema_version == SCHEMA_VERSION == 1
+    assert back.metadata["trained"] is True
+    assert back.metadata["adapter_id"] == "lora-r16"
+    assert back.metadata["quantization"] == "8bit"
+    assert back.metadata["raft_hits"] == ["Abuse001_x264"]
+
+
+def test_schema_version_2_is_still_rejected(tmp_path):
+    p = tmp_path / "v1.json"
+    p.write_text(json.dumps({"schema_version": 2, "video_id": "v1", "sample_fps": 1.0,
+                             "metadata": {"trained": True}}), encoding="utf-8")
+    with pytest.raises(ValueError, match="schema_version"):
+        RunResult.from_json(p)
+
+
 def test_committed_sample_run_matches_current_schema():
     """Nếu ai đó đổi schema mà quên sinh lại file mẫu, test này bắt được ngay."""
     p = DEFAULT_RESULTS_DIR / "sample_run.json"

@@ -21,6 +21,7 @@ import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
 
 import data  # noqa: E402
+import trained  # noqa: E402
 
 VERDICT_COLORS = {"confirmed": "#2e9e5b", "rejected": "#d9534f", "not verified": "#9aa0a6"}
 
@@ -77,7 +78,8 @@ def _replay_tab(run, threshold: float, min_sev: str) -> None:
               help="Candidate windows the tier-2 VLM judged not anomalous.")
     st.caption(f"model: {meta.get('model', '?')} · commit: {meta.get('commit', '?')} · "
                f"run at: {meta.get('timestamp', '?')} · sample_fps: {run.sample_fps:g} · "
-               f"tier 2: {meta.get('tier2', '?')}")
+               f"tier 2: {meta.get('tier2', '?')}"
+               + (f" · {trained.trained_badge(run)}" if trained.is_trained(run) else ""))
 
     video_path = data.find_video_path(run.video_id)
     wins = data.detections(run)
