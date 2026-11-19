@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "query": {
+    "video_id": "Abuse001_x264",
+    "start_s": 12.0,
+    "end_s": 20.0,
+    "frame_paths": [
+      "datasets/ucf_crime/train/Abuse/Abuse001_x264/0012.jpg",
+      "datasets/ucf_crime/train/Abuse/Abuse001_x264/0014.jpg",
+      "datasets/ucf_crime/train/Abuse/Abuse001_x264/0016.jpg",
+      "datasets/ucf_crime/train/Abuse/Abuse001_x264/0018.jpg"
+    ]
+  },
+  "retrieved": [
+    {"video_id": "Abuse002_x264", "rank": 1, "role": "golden", "cosine": 0.81},
+    {"video_id": "Robbery045_x264", "rank": 2, "role": "distractor", "cosine": 0.63},
+    {"video_id": "Burglary017_x264", "rank": 3, "role": "distractor", "cosine": 0.59},
+    {"video_id": "RoadAccidents024_x264", "rank": 4, "role": "distractor", "cosine": 0.55}
+  ],
+  "golden_present": true,
+  "target_text": "Abuse, cited from Abuse002_x264",
+  "abstain": false
+}
