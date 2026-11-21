@@ -34,3 +34,31 @@ The host answers this time. The GPU does not.
 | Verdict | **no-go** |
 
 95% is not under 10%, and three compute processes are resident. Nobody kills them. P2 and N4 stay blocked until a later reading the same day shows util under 10% for 10 continuous minutes and these PIDs gone. No polling loop from here.
+
+## 2026-11-20 go
+
+The resident jobs from the two readings above are gone. Nothing replaced them.
+
+| Field | Value |
+|---|---|
+| Timestamp | 2026-11-20T17:57:35+07:00, read from the box (`date -Iseconds`) |
+| Host | `aitopatom-d4ac`, reached as `gx10@100.104.163.47` port 22 |
+| GPU util | 0% |
+| Temperature | 48 C |
+| Memory | `[N/A]` (GB10 unified memory, same as the previous reading) |
+| Resident PIDs | none. `nvidia-smi --query-compute-apps` returned no rows |
+| Verdict | **go** |
+
+Confirmed a second time at 18:05+07:00 while finding a Python env: still 0%, 47 C, no compute process. The 10-minute bar is met by the gap between the two readings, not by a polling loop. P2 already exited 0 earlier today (`notes/qwen3-smoke.md`, 12:02, `forced=yes` against the no-go above).
+
+The go above covered the download only. It does not cover the embedding run. A later reading the same evening found the GPU busy again:
+
+| Field | Value |
+|---|---|
+| Timestamp | 2026-11-20, about 18:25+07:00, one `nvidia-smi` from the box |
+| GPU util | 96% |
+| Temperature | 70 C |
+| Resident PIDs | 1043889, 1044115, 1044550, all `/home/gx10/MATE-2026/.venv/bin/python` |
+| Verdict | **no-go for the N4 embedding run** |
+
+The train-split download is not a GPU process and kept running. The embedding run waits until a reading shows these PIDs gone and util under 10%. Nobody kills them.

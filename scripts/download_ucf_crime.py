@@ -92,6 +92,23 @@ def plan_downloads(test_entries: list[str], train_entries: list[str], repo_files
     return test_paths, calib_paths
 
 
+def plan_train(train_entries: list[str], repo_files: set[str], expect: int = 1610) -> list[str]:
+    """-> đường dẫn repo của MỌI video train (normal lẫn anomaly), không lấy mẫu.
+
+    Khác `plan_downloads`: tập train là dữ liệu huấn luyện (N4), không phải 60 video hiệu chỉnh
+    ngưỡng. Số lượng chốt bằng `expect` (1610 = 800 normal + 810 anomaly) để một dòng bịa trong
+    Anomaly_Train.txt không bị tải âm thầm.
+    """
+    paths = [resolve_entry(e, repo_files) for e in train_entries]
+    stems = [Path(p).stem for p in paths]
+    if len(stems) != len(set(stems)):
+        dupes = sorted({s for s in stems if stems.count(s) > 1})
+        raise ValueError(f"video_id trùng trong tập train: {dupes[:5]}")
+    if len(paths) != expect:
+        raise ValueError(f"Anomaly_Train.txt phải có {expect} entry, thực có {len(paths)}")
+    return paths
+
+
 def _download(hf_hub_download, repo_path: str, local_dir: Path) -> str:
     return hf_hub_download(repo_id=REPO_ID, repo_type="dataset", filename=repo_path, local_dir=str(local_dir))
 
@@ -119,6 +136,9 @@ def main(argv=None) -> int:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--max-calib-mb", type=float, default=100.0,
                    help="bỏ video train-normal lớn hơn mức này (MB) trước khi chọn; 0 = không giới hạn")
+    p.add_argument("--split", choices=("test", "train"), default="test",
+                   help="test = 290 video test + calib (mặc định, hành vi cũ); train = toàn bộ 1610 video train")
+    p.add_argument("--expect-train", type=int, default=1610)
     p.add_argument("--threads", type=int, default=4)
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
@@ -141,11 +161,18 @@ def main(argv=None) -> int:
                                            sizes, args.max_calib_mb or None)
 
     gb = lambda ps: sum(sizes[x] for x in ps) / 1e9  # noqa: E731
-    print(f"test: {len(test_paths)} video, {gb(test_paths):.2f} GB | calib: {len(calib_paths)} video, {gb(calib_paths):.2f} GB")
+    if args.split == "train":
+        train_paths = plan_train(train_entries, repo_files, args.expect_train)
+        print(f"train: {len(train_paths)} video, {gb(train_paths):.2f} GB")
+        groups = [(train_paths, out / "train")]
+    else:
+        print(f"test: {len(test_paths)} video, {gb(test_paths):.2f} GB | calib: {len(calib_paths)} video, {gb(calib_paths):.2f} GB")
+        groups = [(test_paths, out / "test"), (calib_paths, out / "train_normal")]
     if args.dry_run:
         return 0
-    failed = run_downloads(test_paths, out / "test", args.threads, hf_hub_download)
-    failed += run_downloads(calib_paths, out / "train_normal", args.threads, hf_hub_download)
+    failed: list[str] = []
+    for paths, dest in groups:
+        failed += run_downloads(paths, dest, args.threads, hf_hub_download)
     if failed:
         print(f"{len(failed)} file lỗi; chạy lại cùng lệnh để tải phần còn thiếu: {failed[:5]}")
         return 1

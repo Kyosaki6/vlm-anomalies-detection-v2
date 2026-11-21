@@ -27,6 +27,8 @@ Each script is one stage. They share a manifest CSV and the embedding cache. The
 | `fetch_cache.py` / `fetch_demo.py` | `cache/`, `datasets/own/` | skip the SHA-256 check |
 | `make_sample_result.py` | `results/sample_run.json` | present it as a measured run |
 | `make_bench_windows.py` | 16-window VLM bench set | mix it into the 290-video AUC |
+| `qwen3_smoke.py` | `notes/qwen3-smoke.md` (P2) | run it while `notes/gb10-gate.md` says no-go, or pass anything but `8bit` |
+| `check_train_cache.py` | stdout only (N4) | count a shard that is missing videos; it exits non-zero until a shard is complete |
 
 ## CONVENTIONS
 - Read manifests and JSON with `utf-8-sig` (`make_sample_result.py` carries a BOM).

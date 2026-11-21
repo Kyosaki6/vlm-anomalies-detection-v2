@@ -18,8 +18,8 @@ GPU rule, unchanged: one GB10 process at a time, and only while `nvidia-smi` sho
 | 4 | H3 | Thịnh | Dashboard metadata. `trained`, `adapter_id`, `base_model`, `quantization`, `raft_hits`. `schema_version` stays 1. UI shows `TRAINED` | no | done |
 | 5 | P3 | Phước | `notes/gb10-access.md`. Host, port, who has a key, how a job dies with the ssh session | no | done |
 | 6 | T2 | Thanh | `vad/train/lora.py` + `scripts/train_lora.py`. Frozen 8-bit base, LoRA r=16, alpha=32, dropout 0.05. Dry run on 2 examples | no | done (dry run only; `--run` still refuses without the smoke note) |
-| 7 | P2 | Phước, launched by Thịnh | Smoke. Load `Qwen/Qwen3-VL-8B-Instruct` 8-bit, one window. `notes/qwen3-smoke.md` | yes, minutes | blocked, gate is no-go |
-| 8 | N4 | Nam, launched by Thịnh | Embed the 1610 with the existing SigLIP 2 cache. Same model id, fps, dtype as the test cache | yes, hours | blocked, waits on P0 go and P2 exit 0 |
+| 7 | P2 | Phước, launched by Thịnh | Smoke. Load `Qwen/Qwen3-VL-8B-Instruct` 8-bit, one window. `notes/qwen3-smoke.md` | yes, minutes | ran 2026-11-20 by `--force` against a no-go gate. Peak 10065 MiB, 4.7 s, exit 0 |
+| 8 | N4 | Nam, launched by Thịnh | Embed the 1610 with the existing SigLIP 2 cache. Same model id, fps, dtype as the test cache | yes, hours | done 2026-11-21. 1610/1610 cached, `check_train_cache.py` exit 0, `notes/n4-embed.md` |
 
 Not in Phase 2, so nobody starts them: T3, T4, H2, H4, F3. F3 is a README paragraph and rides along with H4 in Phase 4.
 
@@ -108,10 +108,10 @@ Read it as: the top row is CPU and starts immediately. P2 is the first GPU proce
 | H3 | A sample JSON with `metadata.trained=true` round-trips through `RunResult`. `schema_version` 2 is still rejected. The Replay tab shows `TRAINED` | done |
 | P3 | A second person runs the smoke command from `notes/gb10-access.md` without asking anything | done |
 | T2 | Dry run on 2 examples prints the trainable-parameter count and writes `adapter_config.json`. It refuses to start a real run when `notes/qwen3-smoke.md` is missing | done |
-| P2 | `notes/qwen3-smoke.md`: peak memory, seconds, bitsandbytes version, transformers version, driver, commit, exit 0. An OOM is recorded and stops the phase. No switch to 4-bit | not started |
-| N4 | Train `.npy` files load with the same loader and the same model id, fps, dtype as the test cache. Count matches the shard that finished | not started |
+| P2 | `notes/qwen3-smoke.md`: peak memory, seconds, bitsandbytes version, transformers version, driver, commit, exit 0. An OOM is recorded and stops the phase. No switch to 4-bit | Done, with a caveat. `notes/qwen3-smoke.md`: 8-bit, peak 10065 MiB, 4.7 s, bitsandbytes 0.50.2, transformers 5.22.2, driver 580.178.04, commit `5666838`, exit 0. Run on 2026-11-20 by `--force` while the gate still said no-go (`forced=yes` in the note). The window was one clip, not a UCF video, because the box has no UCF data |
+| N4 | Train `.npy` files load with the same loader and the same model id, fps, dtype as the test cache. Count matches the shard that finished | Done. `notes/n4-embed.md`: `google/siglip2-base-patch16-384`, fps 1, float16, 1610/1610. This run embedded 1550 (417137 frames, 97.1 min, 0 failures) and skipped 60 already cached. `scripts/check_train_cache.py` exit 0, `count=1610 shards=1/1 dtype=float16`, same loader as the test cache |
 
-As of 2026-11-19: P0, N2, T1, H3, P3, T2 are done. `python -m pytest -q` is 772 passed. P2 and N4 are not done. The gate says no-go, so neither has run, and `scripts/qwen3_smoke.py` does not exist yet.
+As of 2026-11-21: all eight tasks are done. P2 ran 2026-11-20 (`notes/qwen3-smoke.md`, exit 0, `--force` against a no-go gate). N4 ran 2026-11-21 (`notes/n4-embed.md`, 1610/1610, `check_train_cache.py` exit 0). Both notes name `5666838`, the HEAD the box ran. The smoke script, the cache checker, the relink script, and both notes landed in the commit after it. `python -m pytest -q` is 786 passed.
 
 Phase 2 is done when all eight are merged to the fork and `python -m pytest -q` is green. P2 and N4 are done when their notes name the commit, not when the tests pass.
 

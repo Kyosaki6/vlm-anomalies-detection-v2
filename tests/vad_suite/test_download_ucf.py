@@ -87,6 +87,37 @@ def test_parse_split_entries_handles_bom_crlf_backslash_and_dupes():
         d.parse_split_entries("a/x.mp4\na/x.mp4\n")
 
 
+def _train_repo(n_norm=4, n_anom=4):
+    """Train giả: normal nằm ở Training-Normal, anomaly nằm ở Anomaly-Videos-Part."""
+    files, train = set(), []
+    for i in range(n_norm):
+        name = f"Normal_Videos{i:03d}_x264.mp4"
+        files.add(f"Training-Normal-Videos-Part-{i % 2 + 1}/{name}")
+        train.append(f"Training_Normal_Videos_Anomaly/{name}")
+    for i in range(n_anom):
+        name = f"Burglary{i:03d}_x264.mp4"
+        files.add(f"Anomaly-Videos-Part-{i % 4 + 1}/Burglary/{name}")
+        train.append(f"Burglary/{name}")
+    return files, train
+
+
+def test_plan_train_returns_every_video_both_kinds():
+    files, train = _train_repo()
+    paths = d.plan_train(train, files, expect=8)
+    assert len(paths) == 8
+    assert sum(p.startswith("Training-Normal-Videos-Part-") for p in paths) == 4
+    assert sum(p.startswith(d.ANOMALY_PREFIX) for p in paths) == 4
+
+
+def test_plan_train_rejects_wrong_count_and_duplicate_id():
+    files, train = _train_repo()
+    with pytest.raises(ValueError, match="8"):
+        d.plan_train(train, files, expect=1610)
+    files.add("Anomaly-Videos-Part-2/Burglary/Burglary000_x264.mp4")
+    with pytest.raises(ValueError, match="2 khớp"):
+        d.plan_train(train, files, expect=8)
+
+
 def test_run_downloads_reports_failures_and_continues(tmp_path):
     calls = []
 
