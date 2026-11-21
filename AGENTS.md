@@ -1,6 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
-**Updated:** 2026-11-02 · **Branch:** main · Plan: `notes/2026-10-28-plan-zero-shot-video-vad.md`
+**Generated:** 2026-11-19 · **Commit:** `eadf000` · **Branch:** main · Plan: `notes/2026-10-28-plan-zero-shot-video-vad.md`
 
 ## OVERVIEW
 One codebase, `vad/`:
@@ -11,9 +11,9 @@ One codebase, `vad/`:
    Benchmark: UCF-Crime test 290 videos, frame-level AUC with bootstrap CI over **videos**. ShanghaiTech is out of
    scope (time cut, D4-1 NO-GO) — do not claim results for it.
 
-Deadline: submit before **2026-11-04** (hard cutoff: end of 2026-11-03 23:59; feature freeze 2026-11-02 evening, 11-03 = report + packaging).
-Team = 4 (Phước, Huy, Nam, Thịnh). Dashboard owner: Thịnh (whole Streamlit dashboard). Scope cuts: `notes/2026-10-29-task-assignment.md` §6.
-Report + defense in Vietnamese, dashboard in English.
+Submitted 2026-11-04 (historical). Team = 4 (Phước, Huy, Nam, Thịnh). Dashboard owner: Thịnh.
+Report + defense in Vietnamese, dashboard in English. Scope cuts: `notes/2026-10-29-task-assignment.md` §6.
+Child docs: `vad/AGENTS.md`, `scripts/AGENTS.md`, `tests/vad_suite/AGENTS.md`. `vad/README.md` module table is stale (predates tier-1/tier-2 runs) — trust code + `results/`, not that table.
 
 ## STRUCTURE
 ```
@@ -27,24 +27,54 @@ vad/            types.py, interfaces.py (Protocols), fakes.py  — contracts sha
   verify/       vlm.py (real VLMVerifier: Qwen2.5-VL, 4-bit, chunk <= 30 s; plus the strict JSON parser)
   graph/        policy.py (YAML -> NetworkX alert policy) ; configs/policy.yaml
   eval/         metrics.py (frame-level AUC, video-level bootstrap, FA/hour, latency)
-scripts/        precompute_embeddings.py (--shard i/N ; repeat --model ; --dry-run), run_benchmark.py,
-                calibrate_threshold.py, run_verify.py (tier 2), build_results.py (RunResult + alerts),
-                eval_tier2.py, eval_vlm_typing.py, make_figures.py
-app/            data.py (loads RunResult, no streamlit import) + streamlit_app.py (real results, Replay + Overview)
-configs/        policy.yaml, prompts.yaml
-tests/vad_suite/ (725 tests total)
-notes/          experiment logs + the plan
+scripts/        20 CLIs, not installed as console_scripts. Order: precompute_embeddings ->
+                run_benchmark -> calibrate_threshold -> export_windows -> run_verify ->
+                build_results -> eval_tier2 / eval_vlm_typing / make_figures.
+                Also: download_ucf_crime, build_manifest, fetch_cache, fetch_demo, bench_vlm,
+                audit_report_numbers, a0_stride_check, draw_a6_sample, eval_typer.
+app/            data.py (loads RunResult, NO streamlit import) + streamlit_app.py
+                (real results/run_A4c/, Replay + Overview). `default_results_dir()` prefers run_A4c/.
+configs/        policy.yaml, prompts.yaml — no pyproject.toml, no pytest.ini, no ruff/mypy config
+tests/vad_suite/ 35 modules. Root conftest.py only prepends repo root to sys.path.
+notes/          experiment logs + the plan. report/ Vietnamese chapters.
+results/        committed JSON (fake=false). Not a code package.
 ```
 
 ## WHERE TO LOOK
 | Task | Location |
 |---|---|
-| Per-module status, who owns what, what is a stub | `vad/README.md` |
+| Module map, public symbols | `vad/AGENTS.md` (README module table is stale) |
 | Full plan, timeline, risks, decisions log | `notes/2026-10-28-plan-zero-shot-video-vad.md` |
 | Detection / typing / verifier prompts | `configs/prompts.yaml` |
 | Alert rules (zones, time bands, escalation) | `configs/policy.yaml` |
 | UCF-Crime annotation parsing | `vad/datasets/ucf_crime.py` |
 | ROC-AUC with ties, video bootstrap, FA/hour | `vad/eval/metrics.py` |
+| Tier-1 ablation switches A0..A5 | `vad/pipeline.py` `ABLATIONS` / `PipelineConfig` |
+| RunResult schema the dashboard reads | `vad/results.py` |
+| Dashboard loader (no streamlit) | `app/data.py` |
+| Which CLI writes which path | `scripts/AGENTS.md` |
+
+## CODE MAP
+
+Python LSP not installed. Inventory from `ast` on `vad/**/*.py` (73 public top-level symbols). Ref counts are import-sites from `scripts/`, `app/`, `tests/` — not LSP references.
+
+| Symbol | Type | Location | Refs | Role |
+|--------|------|----------|------|------|
+| `RunResult` | class | `vad/results.py:131` | 17 | JSON contract the dashboard and build_results share |
+| `EventType` | class | `vad/types.py:13` | 18 | 13-class label enum; strings, not StrEnum |
+| `Window` | class | `vad/types.py:56` | 17 | candidate interval tier-1 emits, tier-2 verifies |
+| `VerifyResult` | class | `vad/types.py:69` | 15 | VLM verdict; rejected windows never become alerts |
+| `Alert` | class | `vad/types.py:78` | 7 | policy output; cooldown keyed by camera |
+| `load_annotations` | func | `vad/datasets/ucf_crime.py:59` | 14 | UCF GT parser; inclusive frame ranges |
+| `PipelineConfig` | class | `vad/pipeline.py:42` | 6 | every ablation switch; A0..A5 differ only here |
+| `SigLIPEmbedder` | class | `vad/embed/siglip.py:55` | 7 | real embedder, SigLIP 2 and CLIP-B/32, one class |
+| `VLMVerifier` | class | `vad/verify/vlm.py:104` | — | real tier-2; raises, never invents a verdict |
+| `GraphPolicy` | class | `vad/graph/policy.py:72` | 6 | YAML to NetworkX alert policy |
+| `candidate_windows` | func | `vad/temporal/ops.py:67` | 6 | thresholded samples to windows, gap 5 s |
+| `ZeroShotEventTyper` | class | `vad/score/typing.py:64` | 6 | 13-class cosine typer; typing stage only |
+| `FakeEmbedder` / `FakeVerifier` | class | `vad/fakes.py` | 5 / 8 | GPU stand-ins; tests and `--fake` only |
+
+Import hub: `vad/types.py`. Subpackages barely import each other; `vad/pipeline.py` is the composer. `vad/__init__.py` is empty — import from the submodule, not `vad`.
 
 ## NO STUBS LEFT — what is already measured (as of 2026-11-02, main `04cf958`)
 
