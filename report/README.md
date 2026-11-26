@@ -60,6 +60,7 @@ pandoc -s --toc -o report.pdf --pdf-engine=xelatex -V geometry:margin=2.5cm -V m
 | `02-nghien-cuu-lien-quan.md` | Nghiên cứu liên quan | Khung hoàn chỉnh (đã chốt số liệu nền) | Thịnh (TH1, TH8) |
 | `03-phuong-phap.md` | Phương pháp đề xuất | Khung hoàn chỉnh | Thịnh (TH2, TH8) + Nam (C1, C2, C5) + Phước (A2) |
 | `04-thuc-nghiem.md` | Thực nghiệm & Đánh giá | Đã điền số liệu thật (A0 - A6, tầng 2, typing, vận hành) | Nguồn: `results/ablation_*.json`, `results/vlm_typing_eval.json`, `results/typing_eval.json`, `notes/a5b-log.md`, `notes/a6-handcheck.md`, `notes/a7-fp-analysis.md`. Còn chờ: hàng demo E4 (clip iStock, không tính vào benchmark) |
+| `04b-trained.md` | Lần chạy đã huấn luyện | Sinh từ `vad/report/trained.py`, không nằm trong lệnh pandoc | Nguồn: `results/ablation_A4c.json`, `results/ablation_A6.json`, `notes/holdout.md`. R3 chưa chạy |
 | `05-ket-luan.md` | Kết luận & Hướng phát triển | Khung hoàn chỉnh | Thịnh (TH8) |
 | `06-phu-luc.md` | Phụ lục kỹ thuật | Khung hoàn chỉnh | Huy (B1, B3) + Nam (C4) + Phước (A1) + Thịnh |
 | `refs.md` | Tài liệu tham khảo | Khung danh mục | Thịnh (TH8) |
