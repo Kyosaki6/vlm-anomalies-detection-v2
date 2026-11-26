@@ -23,7 +23,7 @@ Your next move: run it with `$ulw-execute`, or ask for a high-accuracy review fi
 
 ---
 
-> TL;DR (machine): Large, medium risk. Six todos. Training loop, seeded holdout, R3-only eval, same-day gate guard. No GPU launch.
+> TL;DR (machine): Large, medium risk. Six todos, all done. Training loop, seeded holdout, R3-only eval, same-day gate guard. The holdout citation run was measured on 2026-11-26: accuracy 0.0211 against a class prior of 0.2632. The stop rule fired, so `results/trained/R3.json` was not written.
 
 ## Scope
 ### Affected user and ideal state
@@ -157,7 +157,7 @@ Your next move: run it with `$ulw-execute`, or ask for a high-accuracy review fi
   Recommended task executor category: writing - the output is two notes, and the test checks their content rather than their prose.
 
 ## Final verification wave
-> Runs in parallel after ALL todos. ALL must APPROVE. Surface results and wait for the user's explicit okay before declaring complete.
+> Not run. The holdout citation run scored 0.0211 against a class prior of 0.2632, the stop rule fired, and `results/trained/R3.json` was not written. That closes the measurement. It does not close these four audits, so they stay open.
 - [ ] F1. Plan compliance audit
 - [ ] F2. Code quality review
 - [ ] F3. Real manual QA

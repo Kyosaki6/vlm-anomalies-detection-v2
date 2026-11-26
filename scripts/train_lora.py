@@ -20,6 +20,7 @@ import time
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from vad.index.siglip import build  # noqa: E402
+from vad.train.citation import holdout_examples, prompt_text, score_holdout  # noqa: E402
 from vad.leakcheck import read_ids  # noqa: E402
 from vad.train.gate import gate_is_go  # noqa: E402
 from vad.train.holdout import holdout_ids, read_train_catalog  # noqa: E402
@@ -56,7 +57,11 @@ def _video_paths(manifest: str) -> dict[str, str]:
 
 
 def training_examples(manifest: str, seed: int):
-    """Catalog trừ holdout, ví dụ RAFT ở p=0.6. Trả về (examples, holdout ids)."""
+    """Catalog trừ holdout, ví dụ RAFT ở p=0.6. Trả về (examples, holdout ids, bundle).
+
+    `bundle` dựng lại đúng ví dụ holdout: cùng index, cùng catalog train, vector holdout
+    lấy tiếp từ cùng rng nên không trùng vector train.
+    """
     catalog = read_train_catalog(manifest)
     paths = _video_paths(manifest)
     held = holdout_ids(catalog, fraction=0.1, seed=seed)
@@ -70,7 +75,9 @@ def training_examples(manifest: str, seed: int):
         for vid, clip in train_catalog.items()
     )
     examples = list(build_dataset(queries, index, train_catalog, p=0.6, seed=seed))
-    return examples, held
+    held_vecs = {vid: rng.standard_normal(dim).astype(np.float32) for vid in held}
+    bundle = (catalog, train_catalog, index, paths, held_vecs)
+    return examples, held, bundle
 
 
 def get_commit_hash() -> str:
@@ -103,10 +110,11 @@ def _record(res: dict, spec: LoRASpec, held, args, citation_accuracy, class_prio
         class_prior=class_prior,
         train_note_path=args.train_note,
         holdout_note_path=args.holdout_note,
+        holdout_abstain_rate=getattr(args, "holdout_abstain_rate", None),
     )
 
 
-def main(argv=None, steps_fn=None, eval_fn=None) -> int:
+def main(argv=None, steps_fn=None, eval_fn=None, generate_fn=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = p.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="2 ví dụ, ghi adapter_config.json, không tải model")
@@ -144,7 +152,7 @@ def main(argv=None, steps_fn=None, eval_fn=None) -> int:
             print("LỖI: gate_is_go từ chối khởi chạy (cổng hôm nay chưa go)", file=sys.stderr)
             return 3
 
-        examples, held = training_examples(args.train_manifest, args.seed)
+        examples, held, bundle = training_examples(args.train_manifest, args.seed)
         if steps_fn is not None:
             fn = steps_fn
         else:
@@ -161,6 +169,8 @@ def main(argv=None, steps_fn=None, eval_fn=None) -> int:
             res["peak_memory"] = f"{peak:.0f} MiB"
         if not getattr(fn, "saved", False):
             _save_injected(fn, Path(args.out_dir))
+        gen = generate_fn if generate_fn is not None else getattr(fn, "generate", None)
+        _apply_measurement(held, bundle, args.seed, gen, args)
         return _finish(res, spec, held, args, eval_fn)
 
     # --run
@@ -170,11 +180,32 @@ def main(argv=None, steps_fn=None, eval_fn=None) -> int:
         print(f"LỖI: {e}", file=sys.stderr)
         return 1
 
-    examples, held = training_examples(args.train_manifest, args.seed)
+    examples, held, bundle = training_examples(args.train_manifest, args.seed)
     fn = steps_fn if steps_fn is not None else (lambda ex: 0.1)
     res = train(examples, spec, fn)
     res["loss"] = "pending-launch"
+    _apply_measurement(held, bundle, args.seed, generate_fn, args)
     return _finish(res, spec, held, args, eval_fn)
+
+
+def _apply_measurement(held, bundle, seed: int, generate_fn, args) -> None:
+    """Chấm holdout bằng đúng prompt lúc train. Không có hàm sinh thì để 'not measured'."""
+    if generate_fn is None:
+        return
+    catalog, train_catalog, index, paths, held_vecs = bundle
+    examples = holdout_examples(
+        held, catalog, train_catalog, index, paths, held_vecs, p=0.6, seed=seed,
+    )
+    scored = score_holdout(examples, generate_fn)
+    args.citation_accuracy = scored["citation_accuracy"]
+    args.class_prior = scored["class_prior"]
+    args.holdout_abstain_rate = scored["abstain_rate"]
+    print(
+        f"citation_accuracy={scored['citation_accuracy']:.4f} "
+        f"class_prior={scored['class_prior']:.4f} "
+        f"n_golden={int(scored['n_golden'])} n_abstain={int(scored['n_abstain'])}",
+        flush=True,
+    )
 
 
 def _finish(res, spec, held, args, eval_fn) -> int:
@@ -184,7 +215,7 @@ def _finish(res, spec, held, args, eval_fn) -> int:
         eval_fn()
         return 0
     if measured and not can_eval:
-        print("DỪNG: adapter ở mức class prior, eval không chạy", file=sys.stderr)
+        print("DỪNG: citation không vượt class prior, eval không chạy", file=sys.stderr)
         return 4
     return 0
 
@@ -241,7 +272,7 @@ def _gpu_step(spec: LoRASpec, lora_config, out_dir: Path):
             "role": "user",
             "content": [
                 {"type": "image"},
-                {"type": "text", "text": "Name the event and cite the clip, or say Normal."},
+                {"type": "text", "text": prompt_text(example)},
             ],
         }
         full = processor.apply_chat_template(
@@ -276,7 +307,39 @@ def _gpu_step(spec: LoRASpec, lora_config, out_dir: Path):
         step.saved = True
         print(f"saved adapter to {out_dir}", flush=True)
 
+    def generate(example: dict) -> str:
+        import torch
+        from vad.io.video import iter_sampled_frames
+
+        paths = example.get("query", {}).get("frame_paths") or []
+        if not paths or not Path(paths[0]).is_file():
+            raise FileNotFoundError(f"không có video để chấm: {paths[:1]}")
+        frame = next(iter_sampled_frames(paths[0], sample_fps=1.0), None)
+        if frame is None:
+            raise RuntimeError(f"không lấy được khung hình từ {paths[0]}")
+        image = Image.fromarray(frame[1])
+        user = {
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "text", "text": prompt_text(example)},
+            ],
+        }
+        text = processor.apply_chat_template([user], tokenize=False, add_generation_prompt=True)
+        batch = processor(text=[text], images=[image], return_tensors="pt")
+        batch = {k: v.to(model.device) for k, v in batch.items()}
+        was_training = model.training
+        model.eval()
+        try:
+            with torch.inference_mode():
+                out = model.generate(**batch, max_new_tokens=64, do_sample=False)
+        finally:
+            model.train(was_training)
+        gen = out[0][batch["input_ids"].shape[1]:]
+        return processor.batch_decode([gen], skip_special_tokens=True)[0]
+
     step.save = save
+    step.generate = generate
     return step
 
 

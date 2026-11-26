@@ -8,6 +8,7 @@ import pytest
 from vad.leakcheck import read_ids
 from vad.train.holdout import holdout_ids, read_train_catalog
 from vad.train.notes import (
+    BELOW_SENTENCE,
     STOP_SENTENCE,
     render_holdout_note,
     render_lora_train_note,
@@ -126,3 +127,13 @@ def test_citation_accuracy_equal_prior_stops_eval(tmp_path: Path):
         mock_eval()
 
     assert len(eval_called) == 0
+
+
+def test_citation_below_prior_does_not_proceed(tmp_path: Path):
+    catalog = read_train_catalog(TRAIN_MANIFEST)
+    h_ids = holdout_ids(catalog, fraction=0.1, seed=20261119)
+    text, may_proceed = render_holdout_note(h_ids, read_ids(TEST_MANIFEST), 0.10, 0.50)
+    assert may_proceed is False
+    assert BELOW_SENTENCE in text
+    assert "0.1000" in text
+    assert "-0.4000" in text

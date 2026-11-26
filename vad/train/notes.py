@@ -4,7 +4,7 @@
 Bao gồm:
 - notes/lora-train.md: commit, config, steps, loss, peak_memory, wall_time, abstain_rate.
 - notes/holdout.md: danh sách video_id holdout, kết quả kiểm tra disjointness với ucf_test.csv,
-  so sánh citation accuracy với class prior, và stop sentence nếu chênh lệch <= 1%.
+   so sánh citation accuracy với class prior. Eval chỉ được chạy khi citation cao hơn prior hơn 1 điểm.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from typing import Any, Sequence
 
 
 STOP_SENTENCE = "The adapter predicts the class prior and the eval does not start."
+BELOW_SENTENCE = "Citation accuracy is below the class prior. Evaluation does not start."
 PROCEED_SENTENCE = "Citation accuracy exceeds class prior. Evaluation may proceed."
 
 
@@ -54,12 +55,15 @@ def render_holdout_note(
     test_ids: set[str],
     citation_accuracy: float | None,
     class_prior: float | None,
+    holdout_abstain_rate: float | None = None,
 ) -> tuple[str, bool]:
     """Định dạng ghi chú holdout notes/holdout.md và kiểm tra quy tắc dừng.
 
-    Trả về (nội dung_markdown, is_at_prior).
-    is_at_prior là True nếu cả hai số đều có và chênh lệch <= 0.01.
-    Thiếu một trong hai số -> không dừng theo prior, ghi 'not measured'.
+    Trả về (nội dung_markdown, may_proceed).
+    may_proceed chỉ đúng khi cả hai số đều có và citation accuracy cao hơn class prior
+    hơn một điểm phần trăm. Thấp hơn prior cũng dừng: chênh lệch tuyệt đối không phân biệt
+    được adapter kém hơn đoán lớp đông nhất.
+    Thiếu một trong hai số -> ghi 'not measured', không cho chạy eval.
     """
     holdout_set = set(holdout_ids_seq)
     overlap = sorted(holdout_set & test_ids)
@@ -67,18 +71,29 @@ def render_holdout_note(
 
     if citation_accuracy is None or class_prior is None:
         diff = None
-        is_at_prior = False
+        may_proceed = False
         verdict_sentence = NOT_MEASURED_SENTENCE
         acc_cell = "not measured"
         prior_cell = "not measured" if class_prior is None else f"{class_prior:.4f}"
         diff_cell = "not measured"
     else:
-        diff = abs(citation_accuracy - class_prior)
-        is_at_prior = diff <= 0.01
-        verdict_sentence = STOP_SENTENCE if is_at_prior else PROCEED_SENTENCE
+        diff = citation_accuracy - class_prior
+        if diff > 0.01:
+            verdict_sentence = PROCEED_SENTENCE
+            may_proceed = True
+        elif diff < -0.01:
+            verdict_sentence = BELOW_SENTENCE
+            may_proceed = False
+        else:
+            verdict_sentence = STOP_SENTENCE
+            may_proceed = False
         acc_cell = f"{citation_accuracy:.4f}"
         prior_cell = f"{class_prior:.4f}"
         diff_cell = f"{diff:.4f}"
+
+    abstain_cell = (
+        "not measured" if holdout_abstain_rate is None else f"{holdout_abstain_rate:.4f}"
+    )
 
     lines = [
         "# Holdout Check Log (T4)",
@@ -89,7 +104,8 @@ def render_holdout_note(
         f"| disjointness_check | {'PASS (0 overlap)' if disjoint else f'FAIL ({len(overlap)} overlap)'} |",
         f"| citation_accuracy | {acc_cell} |",
         f"| class_prior | {prior_cell} |",
-        f"| abs_diff | {diff_cell} |",
+        f"| diff | {diff_cell} |",
+        f"| holdout_abstain_rate | {abstain_cell} |",
         f"| verdict | {verdict_sentence} |",
         "",
         "## Disjointness with manifests/ucf_test.csv",
@@ -104,7 +120,7 @@ def render_holdout_note(
         lines.append(f"- {vid}")
     lines.append("")
 
-    return "\n".join(lines), is_at_prior
+    return "\n".join(lines), may_proceed
 
 
 def write_notes(
@@ -115,6 +131,7 @@ def write_notes(
     class_prior: float | None,
     train_note_path: str | Path = "notes/lora-train.md",
     holdout_note_path: str | Path = "notes/holdout.md",
+    holdout_abstain_rate: float | None = None,
 ) -> bool:
     """Ghi cả 2 file ghi chú. Trả về True chỉ khi đã đo và citation accuracy vượt class prior.
 
@@ -124,11 +141,10 @@ def write_notes(
     Path(train_note_path).parent.mkdir(parents=True, exist_ok=True)
     Path(train_note_path).write_text(train_text, encoding="utf-8")
 
-    holdout_text, is_at_prior = render_holdout_note(
-        holdout_ids_seq, test_ids, citation_accuracy, class_prior
+    holdout_text, may_proceed = render_holdout_note(
+        holdout_ids_seq, test_ids, citation_accuracy, class_prior, holdout_abstain_rate
     )
     Path(holdout_note_path).parent.mkdir(parents=True, exist_ok=True)
     Path(holdout_note_path).write_text(holdout_text, encoding="utf-8")
 
-    measured = citation_accuracy is not None and class_prior is not None
-    return measured and not is_at_prior
+    return may_proceed

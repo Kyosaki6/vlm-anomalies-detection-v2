@@ -37,6 +37,7 @@ def test_train_lora_run_with_fake_steps_and_holdout_exclusion(tmp_path: Path):
     assert len(expected_holdout) > 0
 
     note_out = tmp_path / "lora-train.md"
+    holdout_out = tmp_path / "holdout.md"
     recorded_ids = []
 
     def mock_step(ex):
@@ -48,6 +49,7 @@ def test_train_lora_run_with_fake_steps_and_holdout_exclusion(tmp_path: Path):
             "--run",
             "--train-manifest", str(manifest),
             "--train-note", str(note_out),
+            "--holdout-note", str(holdout_out),
             "--smoke-note", str(REAL_SMOKE_NOTE),
             "--seed", "20261119",
         ],
@@ -65,6 +67,15 @@ def test_train_lora_run_with_fake_steps_and_holdout_exclusion(tmp_path: Path):
     # Holdout ids không bao giờ được xuất hiện trong training steps
     assert set(recorded_ids).isdisjoint(expected_holdout)
     assert len(recorded_ids) == len(catalog) - len(expected_holdout)
+
+    # Note holdout phải ra tmp, không đè notes/holdout.md của repo.
+    # Fixture 20 dòng này có holdout vid_003, vid_016. Bản trước thiếu --holdout-note
+    # nên ghi đúng hai id đó vào note thật.
+    assert holdout_out.is_file()
+    assert "vid_003" in holdout_out.read_text(encoding="utf-8")
+    repo_note = (REPO / "notes" / "holdout.md").read_text(encoding="utf-8")
+    assert "vid_003" not in repo_note
+    assert "| holdout_count | 161 |" in repo_note
 
 
 def test_run_stops_when_citation_matches_prior(tmp_path: Path):
