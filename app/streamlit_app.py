@@ -80,6 +80,9 @@ def _replay_tab(run, threshold: float, min_sev: str) -> None:
                f"run at: {meta.get('timestamp', '?')} · sample_fps: {run.sample_fps:g} · "
                f"tier 2: {meta.get('tier2', '?')}"
                + (f" · {trained.trained_badge(run)}" if trained.is_trained(run) else ""))
+    cited = trained.cited_caption(run)
+    if cited:
+        st.caption(cited)
 
     video_path = data.find_video_path(run.video_id)
     wins = data.detections(run)
