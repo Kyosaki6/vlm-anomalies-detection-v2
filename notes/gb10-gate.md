@@ -62,3 +62,51 @@ The go above covered the download only. It does not cover the embedding run. A l
 | Verdict | **no-go for the N4 embedding run** |
 
 The train-split download is not a GPU process and kept running. The embedding run waits until a reading shows these PIDs gone and util under 10%. Nobody kills them.
+
+## 2026-11-21 go
+
+The resident jobs from 2026-11-20 are gone. Two readings, seven minutes apart, both idle.
+
+| Field | Value |
+|---|---|
+| Timestamp | 2026-11-21T20:59:28+07:00, read from the box (`date -Iseconds`) |
+| Host | `aitopatom-d4ac`, reached as `gx10@100.104.163.47` port 22 |
+| GPU util | 0% |
+| Temperature | 38 C |
+| Memory | `[N/A]` (GB10 unified memory, same as the previous readings) |
+| Resident PIDs | none. `nvidia-smi --query-compute-apps` returned no rows |
+| Verdict | **go** |
+
+First reading 2026-11-21T20:52:13+07:00 was the same: 0%, 38 C, no compute process. The 10-minute bar is the gap between the two readings, not a polling loop. This go covers the LoRA launch only.
+
+## 2026-11-25 go
+
+The box is idle again. Two readings, ten minutes apart, both empty.
+
+| Field | Value |
+|---|---|
+| Timestamp | 2026-11-25T22:06:11+07:00, read from the box (`date -Iseconds`) |
+| Host | `aitopatom-d4ac`, reached as `gx10@100.104.163.47` port 22 |
+| GPU util | 0% |
+| Temperature | 61 C |
+| Memory | `[N/A]` (GB10 unified memory). Host `free -h`: 121 GiB total, 95 GiB available |
+| Resident PIDs | none. `nvidia-smi --query-compute-apps` returned no rows |
+| Verdict | **go** |
+
+First reading 2026-11-25T21:56:01+07:00 was the same: 0%, 62 C, no compute process, 93 GiB available. The 10-minute bar is the gap between the two readings, not a polling loop. This go covers the LoRA launch only.
+
+## 2026-11-25 go, rerun
+
+The first launch trained and exited 0, then freed the weights because nothing saved them. This reading clears the rerun that writes the adapter.
+
+| Field | Value |
+|---|---|
+| Timestamp | 2026-11-25T23:19:14+07:00, read from the box (`date -Iseconds`) |
+| Host | `aitopatom-d4ac`, reached as `gx10@100.104.163.47` port 22 |
+| GPU util | 0% |
+| Temperature | 57 C |
+| Memory | `[N/A]` (GB10 unified memory). Host `free -h`: 121 GiB total, 102 GiB available |
+| Resident PIDs | none. `nvidia-smi --query-compute-apps` returned no rows |
+| Verdict | **go** |
+
+First reading 2026-11-25T23:09:08+07:00 was the same: 0%, 60 C, no compute process, 96 GiB available. The 10-minute bar is the gap between the two readings, not a polling loop. This go covers the LoRA rerun only.
