@@ -53,6 +53,7 @@ def test_eval_trained_happy(tmp_path: Path):
             "--test-manifest", str(REAL_TEST_MANIFEST),
             "--train-manifest", str(REAL_TRAIN_MANIFEST),
             "--a6-file", str(a6_file),
+            "--holdout-note", str(_open_note(tmp_path)),
             "--out", str(out_file),
             "--n-bootstraps", "20",
         ],
@@ -85,6 +86,74 @@ def test_eval_trained_happy(tmp_path: Path):
 
     # Không import peft ở module level
     assert "peft" not in sys.modules
+
+
+def _open_note(tmp_path: Path) -> Path:
+    note = tmp_path / "holdout.md"
+    note.write_text(
+        "| citation_accuracy | 0.40 |\n| class_prior | 0.26 |\n",
+        encoding="utf-8",
+    )
+    return note
+
+
+def test_real_holdout_note_exits_4_and_writes_nothing(tmp_path: Path):
+    out_file = tmp_path / "trained" / "R3.json"
+    rc = main(
+        [
+            "--test-manifest", str(REAL_TEST_MANIFEST),
+            "--train-manifest", str(REAL_TRAIN_MANIFEST),
+            "--holdout-note", str(REPO / "notes" / "holdout.md"),
+            "--out", str(out_file),
+        ],
+    )
+    assert rc == 4
+    assert not out_file.exists()
+    assert "peft" not in sys.modules
+
+
+def test_open_gate_without_scorer_raises(tmp_path: Path):
+    with pytest.raises(NotImplementedError):
+        main(
+            [
+                "--test-manifest", str(REAL_TEST_MANIFEST),
+                "--train-manifest", str(REAL_TRAIN_MANIFEST),
+                "--holdout-note", str(_open_note(tmp_path)),
+                "--out", str(tmp_path / "R3.json"),
+            ],
+        )
+
+
+def test_open_gate_with_scorer_writes_the_file(tmp_path: Path):
+    a6_file = tmp_path / "ablation_A6.json"
+    a6_file.write_text(json.dumps({"threshold": 1.1686, "auc_micro": 0.5}), encoding="utf-8")
+    out_file = tmp_path / "trained" / "R3.json"
+
+    def scorer(test_ids, tau):
+        return {
+            "scores_per_video": [[0.0, 1.0]],
+            "labels_per_video": [[False, True]],
+            "n_false_alarms": 0,
+            "normal_seconds": 3600.0,
+            "true_positive_windows": 1,
+            "n_windows": 1,
+            "incidents_detected": 1,
+            "incidents": 1,
+        }
+
+    rc = main(
+        [
+            "--test-manifest", str(REAL_TEST_MANIFEST),
+            "--train-manifest", str(REAL_TRAIN_MANIFEST),
+            "--a6-file", str(a6_file),
+            "--holdout-note", str(_open_note(tmp_path)),
+            "--out", str(out_file),
+            "--n-bootstraps", "20",
+        ],
+        scorer_fn=scorer,
+    )
+    assert rc == 0
+    assert out_file.is_file()
 
 
 def test_planted_test_id_aborts_eval_and_writes_nothing(tmp_path: Path):

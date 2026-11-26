@@ -30,6 +30,9 @@ from vad.eval.metrics import (  # noqa: E402
     video_bootstrap_auc_ci,
 )
 from vad.leakcheck import LeakError, check, read_ids  # noqa: E402
+from vad.train.verdict import eval_allowed  # noqa: E402
+
+HOLDOUT_REFUSED = 4
 
 
 def _metrics_from_scorer(raw: dict[str, Any], a6_auc: float, n_bootstraps: int, seed: int) -> dict[str, float]:
@@ -65,6 +68,7 @@ def main(argv=None, scorer_fn: Callable[[list[str], float], dict[str, Any]] | No
     p.add_argument("--out", default="results/trained/R3.json")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--n-bootstraps", type=int, default=1000)
+    p.add_argument("--holdout-note", default="notes/holdout.md")
     args = p.parse_args(argv)
 
     # 1. Leak check H1
@@ -78,7 +82,16 @@ def main(argv=None, scorer_fn: Callable[[list[str], float], dict[str, Any]] | No
         print(f"LỖI RÒ RỈ DỮ LIỆU (LeakError): {e}", file=sys.stderr)
         return 1
 
-    # 2. Đọc file A6
+    # 2. Cổng holdout. False -> thoát trước khi đọc A6 hay gọi scorer, không ghi file.
+    if not eval_allowed(args.holdout_note):
+        print(
+            f"HOLDOUT REFUSED: {args.holdout_note} không vượt class prior hơn 0.01. "
+            "Eval không chạy.",
+            file=sys.stderr,
+        )
+        return HOLDOUT_REFUSED
+
+    # 3. Đọc file A6
     a6_path = Path(args.a6_file)
     if not a6_path.is_file():
         print(f"LỖI: không thấy A6 file {a6_path}", file=sys.stderr)
